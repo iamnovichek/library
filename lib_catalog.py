@@ -6,7 +6,7 @@ from peewee import *
 DB = SqliteDatabase('library.db')
 
 
-class MemberModel(Model):
+class Member(Model):
     user_id = AutoField(primary_key=True,
                         unique=True)
     name = CharField(max_length=60)
@@ -18,16 +18,7 @@ class MemberModel(Model):
         table_name = 'members'
 
 
-class CheckedOutBookModel(Model):
-    user_id = ForeignKeyField(MemberModel)
-
-
-    class Meta:
-        database = DB
-        table_name = 'checked_out_books'
-
-
-class BookModel(Model):
+class Book(Model):
     book_id = AutoField(primary_key=True,
                         unique=True)
     title = CharField(max_length=30)
@@ -39,6 +30,15 @@ class BookModel(Model):
     class Meta:
         database = DB
         table_name = 'books'
+
+
+class CheckedOutBook(Model):
+    user_id = ForeignKeyField(Member)
+    book_id = ForeignKeyField(Book)
+
+    class Meta:
+        database = DB
+        table_name = 'checked_out_books'
 
 
 class DataManager:
@@ -84,9 +84,8 @@ class Book:
                f'borrowers="{self.borrowers}")'
 
 
-class Library:
+class Library(DataManager):
     # must have checkout system
-    _db = DataManager()
     books = []
     members = []
 
