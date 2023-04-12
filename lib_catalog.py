@@ -163,3 +163,29 @@ class Library(DataManager):
 
 class CheckOut:
     """Must have check out system"""
+
+    '''it will take a member name and an user email 
+       than it will ask an author, after u can ask 
+       all books of current author or choose the 
+       specific book by entering a title. also
+       u can ask a list of popular books'''
+
+    @classmethod
+    def _choose_books_by_title(cls, title: str):
+        book = Book.select().where(Book.title == title).get()
+
+        return book
+
+    @classmethod
+    def _choose_books_by_author(cls, author: str):
+        books = Book.select().where(Book.author == author).get()
+
+        return books
+
+    @classmethod
+    def _take_member_info(cls,
+                          name: str,
+                          email: str):
+        member = Member.select().where(Member.name == name and Member.email == email).get()
+
+        return member
