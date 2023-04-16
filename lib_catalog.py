@@ -1,23 +1,9 @@
 from peewee import *
 import uuid
-from abc import ABC
-import json
 
-# database - SQLite
+# database - SQLite3
 DB = SqliteDatabase('library.db')
-
-
-# date manager
-
-class DataManager(ABC):
-    def add_book(self, *args, **kwargs):
-        pass
-
-    def add_member(self, *args, **kwargs):
-        pass
-
-    def delete_member(self, *args, **kwargs):
-        pass
+DB.connect()
 
 
 class Member(Model):
@@ -57,10 +43,29 @@ class Book(Model):
         table_name = 'books'
 
 
-class CheckedOutBook(Model):
-    member_id = ForeignKeyField(Member,
-                                primary_key=True)
+class CheckOutHistory(Model):
+    member_id = UUIDField()
     book_id = ForeignKeyField(Book)
+
+    def __iter__(self):
+        cursor = self.select().execute()
+        for row in cursor:
+            yield row
+
+    class Meta:
+        database = DB
+        table_name = 'check_out_history'
+
+
+class CheckedOutBook(Model):
+    member_id = UUIDField()
+    book_id = ForeignKeyField(Book)
+    title = CharField()
+
+    def __iter__(self):
+        cursor = self.select().execute()
+        for row in cursor:
+            yield row
 
     class Meta:
         database = DB
@@ -68,40 +73,153 @@ class CheckedOutBook(Model):
 
 
 class CheckOut:
-    """Must have check out system"""
+    @classmethod
+    def check_out(cls,
+                  email: str,
+                  title: str,
+                  ):
+        member = cls._take_member_info(
+            email=email
+        )
+        book = cls._choose_book_by_title(
+            title=title
+        )
 
-    '''it will take a member name and an user email 
-       than it will ask an author, after u can ask 
-       all books of current author or choose the 
-       specific book by entering a title. also
-       u can ask a list of popular books'''
+        if not cls._has_current_book(
+                member_id=member.member_id,
+                book_title=book.title
+        ):
+            checked_out_book = CheckedOutBook.create(
+                member_id=member.member_id,
+                book_id=book.ISBN,
+                title=book.title
+            )
+            checked_out_book.save()
+            Book.update(checked_out=True).where(
+                Book.ISBN == book.ISBN
+            ).execute()
+            CheckOutHistory.create(
+                member_id=member.member_id,
+                book_id=book.ISBN
+            ).save()
+
+        else:
+            raise Exception("You already have this book")
 
     @classmethod
-    def _choose_books_by_title(cls, title: str):
-        book = Book.select().where(Book.title == title).get()
+    def return_book(cls,
+                    title: str,
+                    email: str):
+        member = cls._take_member_info(
+            email=email
+        )
+        book = cls._return_book_by_title(
+            title=title
+        )
 
-        return book
-
-    @classmethod
-    def _choose_books_by_author(cls, author: str):
-        books = Book.select().where(Book.author == author).get()
-
-        return books
-
-    @classmethod
-    def _take_member_info(cls,
-                          name: str,
-                          email: str):
-        member = Member.select().where(Member.name == name and Member.email == email).get()
-
-        return member
-
-
-class Library(DataManager, CheckOut):
-    # must have checkout system
+        if cls._has_current_book(
+                member_id=member.member_id,
+                book_title=title
+        ):
+            checked_out_book = CheckedOutBook.get(
+                member_id=member.member_id,
+                title=title
+            )
+            checked_out_book.delete_instance()
+            Book.update(checked_out=False).where(
+                Book.ISBN == book.ISBN
+            ).execute()
+        else:
+            raise Exception("You do not have this book")
 
     @staticmethod
-    def add_book(title: str,  # good
+    def _return_book_by_title(title: str):
+        try:
+            Book.get(Book.title == title)
+
+        except:
+            raise Exception("Type correct title")
+
+        try:
+
+            book = Book.select().where(
+                Book.title == title,
+                Book.checked_out == True
+            ).get()
+
+            return book
+
+        except Exception as e:
+            raise e
+
+    @staticmethod
+    def _choose_book_by_title(title: str):
+        try:
+            Book.get(Book.title == title)
+
+        except:
+            raise Exception("Type correct title")
+
+        try:
+
+            book = Book.select().where(
+                Book.title == title,
+                Book.checked_out == False
+            ).get()
+
+            return book
+
+        except:
+            raise Exception("There is not available books for the moment")
+
+    @staticmethod
+    def _has_current_book(member_id,
+                          book_title
+                          ):
+        if CheckedOutBook.select().count() == 0:
+            return False
+
+        try:
+            members = CheckedOutBook.select().where(
+                CheckedOutBook.title == book_title
+            ).get()
+
+            for member in members:
+                if member.member_id == member_id and member.title == book_title:
+
+                    member = CheckedOutBook.select().where(
+                        CheckedOutBook.member_id == member_id
+                    ).get()
+
+                    for m in member:
+                        if m.title == book_title:
+                            return True
+
+            return False
+
+        except:
+            return False
+
+    @staticmethod
+    def _choose_book_by_author(author: str):
+        return Book.select().where(
+            Book.author == author
+        ).get()
+
+    @staticmethod
+    def _take_member_info(email: str):
+        try:
+            return Member.get(
+                Member.email == email
+            )
+        except:
+            raise Exception("Type correct email")
+
+
+class Library:
+
+    @staticmethod
+    def add_book(title: str,
                  author: str,
                  publisher: str,
                  ISBN: int):
@@ -118,57 +236,74 @@ class Library(DataManager, CheckOut):
         return new_book
 
     @staticmethod
-    def add_member(name: str,  # good
+    def add_member(name: str,
                    email: str,
                    address: str):
-        member = Member.create(
+        new_member = Member.create(
             name=name,
             email=email,
             address=address
-        )
-        member.save()
+        ).save()
 
-        return member
+        return new_member
 
     @staticmethod
-    def delete_member(email: str):  # good
+    def delete_member(email: str):
         member = Member.get(Member.email == email)
         member.delete_instance()
 
     @staticmethod
-    def list_members():  # good
-        all_members = Member.select()
-
-        return all_members
-
-    @staticmethod
-    def list_books():  # good
-        all_books = Book.select()
-
-        return all_books
+    def check_out(member_email: str,
+                  book_title: str):
+        CheckOut.check_out(
+            email=member_email,
+            title=book_title
+        )
 
     @staticmethod
-    def search_book_by_title(title: str):  # good
-        book = Book.get(Book.title == title)
-
-        return book
+    def return_book(member_email: str,
+                    book_title: str):
+        CheckOut.return_book(
+            title=book_title,
+            email=member_email
+        )
 
     @staticmethod
-    def search_books_by_author(author: str):  # good
-        books = Book.select().where(Book.author == author)
+    def list_members():
+        return Member.select()
 
-        return books
+    @staticmethod
+    def list_books():
+        return Book.select()
+
+    @staticmethod
+    def search_book_by_title(title: str):
+        return Book.get(Book.title == title)
+
+    @staticmethod
+    def search_books_by_author(author: str):
+        return Book.select().where(Book.author == author)
 
     @classmethod
     def get_popular_books(cls):
-        """This method will give 10 latest books checked out"""
-        popular_books = CheckedOutBook.select()
-        try:
-            popular_books = [popular_books[i] for i in range(10)]
-        except StopIteration:
-            popular_books = [popular_books[i] for i in len(popular_books)]
+        """Returns 10 last checked out books"""
 
-        return [cls._search_book_by_isbn(book.ISBN) for book in popular_books]
+        if CheckOutHistory.select().count() == 0:
+            raise Exception("Nobody have not checked out book yet")
+
+        if CheckOutHistory.select().count() < 10:
+            books = CheckOutHistory.select().order_by(
+                CheckOutHistory.id.desc()
+            )
+
+            return [Book.get(Book.ISBN == book.book_id) for book in books]
+
+        if CheckOutHistory.select().count() >= 10:
+            books = CheckOutHistory.select().order_by(
+                CheckOutHistory.id.desc()
+            ).limit(10)
+
+            return [Book.get(Book.ISBN == book.book_id) for book in books]
 
     @staticmethod
     def _search_book_by_isbn(ISBN: int):
@@ -177,25 +312,19 @@ class Library(DataManager, CheckOut):
     @classmethod
     def get_member_checked_out_books(cls,
                                      email: str):
-        member = Member.get(Member.email == email)
-        books_id = CheckedOutBook.select('book_id').where(CheckedOutBook.member_id == member.member_id)
 
-        return [cls._search_book_by_isbn(i) for i in books_id]
+        try:
+            member = Member.get(Member.email == email)
+            if CheckedOutBook.select().where(
+                    CheckedOutBook.member_id == member.member_id
+            ).count() == 0:
+                raise Exception("You have not checked out any book yet")
 
-    @classmethod
-    def check_out_specific_book(cls):
-        pass
+            books = CheckedOutBook.select().where(
+                CheckedOutBook.member_id == member.member_id
+            )
 
-    @classmethod
-    def check_out_popular_book(cls):
-        pass
+            return [cls._search_book_by_isbn(book.book_id) for book in books]
 
-    @classmethod
-    def check_out_book_by_author(cls):
-        pass
-
-    @classmethod
-    def return_book(cls,
-                    title: str,
-                    author: str):
-        pass
+        except Exception as e:
+            raise f"{e} - type correct email"
