@@ -8,16 +8,16 @@
 ```
 
 2) Type in your ```lib_manager.py``` :
-
-    ```bash
-    DB.create_tables(
-        [
-            Member,
-            Book,
-            CheckOutHistory,
-            CheckedOutBook
-        ]
-    )
+  
+```bash
+  DB.create_tables(
+      [
+          Member,
+          Book,
+          CheckOutHistory,
+          CheckedOutBook
+      ]
+  )
     ```
 
 
