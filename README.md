@@ -21,7 +21,7 @@
 ```
 
 
-3) Execute your code
+3) Run your code
 
 4) Delete :
 
